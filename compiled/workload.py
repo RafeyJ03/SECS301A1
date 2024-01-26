@@ -4,22 +4,27 @@ import requests
 
 
 def load_config(config_file):
-    with open(config_file, 'r') as file:
-        return json.load(file)
+    try:
+        with open(config_file, 'r') as file:
+            return json.load(file)
+    except FileNotFoundError:
+        print(f"Error: Config file '{config_file}' not found.")
+        sys.exit(1)
 
-def read_workload_file(line):
+def read_workload_file(lines, operation):
     # Implement logic to read and parse the workload file
-    servicetarget = line[0] 
-    if servicetarget == "USER":
-        line = {
+    # line = lines.split()
+    servicetarget = lines
+    if operation == "user":
+        dp = {
             'command': servicetarget[1],
             'uid': servicetarget[2],
             'username': servicetarget[3],
             'email': servicetarget[4],
             'password': servicetarget[5]
         }
-    elif servicetarget == "PRODUCT":
-        line = {
+    elif operation == "product":
+        dp = {
             'command': servicetarget[1],
             'pid': servicetarget[2],
             'productname': servicetarget[3],
@@ -27,19 +32,19 @@ def read_workload_file(line):
             'quantity': servicetarget[5]
         }
     
-    elif servicetarget == "ORDER":
-        line = {
+    elif operation == "order":
+        dp = {
             'command': servicetarget[1],
             'uid': servicetarget[2],
             'pid': servicetarget[3],
             'quantity': servicetarget[4],
         }
-    return line
+    return dp
 
 def make_post_request(url, command):
     try:
         work = read_workload_file(command)
-        response = requests.post(url, work)
+        response = requests.post(url, data=work)
         if response.status_code == 200:
             print(f"POST request did work: {response.status_code}")
             print("Response: ", response.text)
@@ -65,20 +70,44 @@ def make_get_request(url, command):
 
 
 def main(config_file, workload_file_path):
+    action_to_method_post = {
+        "user": ["create","update", "delete"],
+        "order": ["place"],
+        "product": ["create","update", "delete"]
+    }
+    action_to_method_get = {
+        "product": ["info"],
+        "user": ["get"]
+    }
+
     config = load_config(config_file)
     ip = config['OrderService']['ip_address']
     port =config['OrderService']['port']
 
-    f = open('myfile.txt', 'r')
-    Lines = f.readlines()
-    for nline in Lines:
-        line = nline.split()
-        command = line[1]
-        order_service_url = 'http://{}:{}/{}'.format(ip, port,line[0].lower())
-        if (line[0].lower() == "user" and command == "get") or (command == "info" and line[0].lower() == "product"):
-            make_get_request(order_service_url, nline)
-        elif (line[0].lower() == "user" or line[0].lower() == "product") and (command == "create" or command == "update" or command == "delete") or (line[0].lower() == "order" and command == "place"):
-            make_post_request(order_service_url, nline)
+    try:
+        f = open(workload_file_path, 'r')
+        Lines = f.readlines()
+        for nline in Lines:
+            line = nline.split()
+            command = line[1]
+            target_service = line[0].lower()
+            order_service_url = 'http://{}:{}/{}'.format(ip, port,target_service)
+            if target_service in action_to_method_get:
+                if command in action_to_method_get[target_service]:
+                    make_get_request(order_service_url, line)
+                else:
+                    raise ValueError(f"Invalid service target")
+            elif target_service in action_to_method_post:
+                if command in action_to_method_get[target_service]:
+                    make_post_request(order_service_url, line)
+                else:
+                    raise ValueError(f"Invalid service target")
+            else:
+                raise ValueError(f"Invalid service target")
+    except FileNotFoundError:
+        print(f"Error: workload file '{workload_file_path}' not found.")
+        sys.exit(1)
+
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
@@ -87,6 +116,7 @@ if __name__ == "__main__":
     config_file_path = sys.argv[1]
     workload_file_path = sys.argv[2]
     main(config_file_path, workload_file_path)
+
 
 
 
